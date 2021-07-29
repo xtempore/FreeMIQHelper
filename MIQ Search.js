@@ -1,20 +1,22 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      1.5
-// @description  Look for MIQ allocation
-// @author       anonymous
+// @version      3.0
+// @description  MIQ allocation helper
+// @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
 // @icon         https://www.google.com/s2/favicons?domain=govt.nz
 // @grant        GM_notification
 // ==/UserScript==
+
+unsafeWindow.quit = false;
 
 (function() {
   'use strict';
 
   /*** USER EDITABLE SECTION ***/
 
-      // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
+  // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
   const ANY_DATE = true;
 
   // List your desired dates here in YYYY-MM-DD format. This is ONLY USED if ANY_DATE = false.
@@ -60,14 +62,28 @@
 
   /*** END of USER EDITABLE SECTION ***/
 
-  const elLog = document.createElement('div');
-  elLog.style.cssText = 'position: fixed; top: 4px; right: 4px; width: 480px; height: 80px; background: rgba(255, 255, 240, 0.9); border: 1px solid gray; overflow-y: auto; font-size: 10pt; box-shadow: 0 0 8px 0 lime';
+      // General variables
+  var pref, outer, elLog, elStop, wantDates;
+  const ev = new MouseEvent("mousedown", {bubbles: true, cancelable: true, which: 1});
+  const availDates = new Map();
+  const dateFKey = {day: "2-digit", month: "short"};
+  const minMonth = 7;
+  const Y = 2021;
 
-  function el(id) {
-    return document.getElementById(id);
+  // Logging
+  function createLog() {
+    elLog = document.createElement("div");
+    elLog.style.cssText = 'position: fixed; top: 4px; right: 4px; width: 480px; height: 80px; background: rgba(255, 255, 240, 0.9); border: 1px solid gray; overflow-y: auto; font-size: 10pt; box-shadow: 0 0 8px 0 lime';
+    elStop = document.createElement("span");
+    elStop.setAttribute("onclick", "window.quit = true;");
+    elStop.style.cssText = 'position: absolute; display: block; top: 2px; right: 2px; font-size: 12pt; cursor: pointer; z-index: 999;';
+    elStop.innerHTML = "&#x23F9;";
+    elLog.appendChild(elStop);
+    document.body.appendChild(elLog);
   }
 
   function log(text) {
+    if (!elLog) createLog();
     elLog.innerHTML += text;
   }
 
@@ -87,35 +103,28 @@
 `;
     const worker = new Worker(window.URL.createObjectURL(new Blob(["onmessage = " + script])));
     worker.onmessage = function(e) {
-      const reload = e.data;
-      if (reload <= 0) {
-        location.reload();
+      if (unsafeWindow.quit) {
+        worker.terminate();
+        log("stopped! Refresh to continue.");
       } else {
-        log(reload + "... ");
+        const reload = e.data;
+        if (reload <= 0) {
+          location.reload();
+        } else {
+          log(reload + "... ");
+        }
       }
     };
     worker.postMessage(n);
   }
 
-  function checkDateData() {
-    const rx = new RegExp("202\\d-\\d\\d-\\d\\d");
-    let check = [];
-    DATES.forEach(s => {
-      const d = new Date(s);
-      if (!rx.test(s)) {
-        check.push(s + " wrong format");
-      }
-      if (isNaN(d)) {
-        check.push(s + " invalid date");
-      }
-    });
-    if (check.length > 0) {
-      log("<b>Date errors: " + check.join(", ") + "</b><br>");
-    }
+  // Date formatting
+  function dateFmt(d, fmt) {
+    return d.toLocaleDateString('en-NZ', fmt);
   }
 
   // Beeper
-  function beep(){
+  function beep() {
     const audio_ctx = new AudioContext();
     const oscillator = audio_ctx.createOscillator();
     oscillator.frequency.value = 660;
@@ -125,77 +134,66 @@
     oscillator.stop(audio_ctx.currentTime + 0.8);
   }
 
-  // Function to decode MIQ dates
-  function getAvailableDates(dates) {
-    const t = [58501527, 28741588, 61219430, 20294527, 57613046, 20913046, 23093500, 40765602];
-    const e = [];
-    const n = dates.split('_');
-    for (let a = 0; a < n.length; a++) {
-      n[a] = n[a].split('').reverse().join('');
-      n[a] = '' + (Number(n[a]) - t[a % t.length]);
-      var i = n[a].substring(0, 4) + '-' + n[a].substring(4, 6) + '-' + n[a].substring(6, 8);
-      e.includes(i) || e.push(i);
+  function getAvailDates() {
+    const days = document.querySelectorAll("." + pref + "__d__item div");
+    for (let i = 0;i < days.length; i++) {
+      const day = days[i];
+      const cls = day.getAttribute("class");
+      const dateS = day.getAttribute("aria-label");
+      if (dateS && cls && cls.trim().toLowerCase() !== "no") {
+        const dt = new Date(dateS + " " + Y);
+        const month = dt.getMonth() + 1;
+        if (month < minMonth) {
+          dt.setFullYear(dt.getFullYear() + 1)
+        }
+        availDates.set(dateFmt(dt, dateFKey), day);
+      }
     }
-    return e;
   }
 
-  // Main function to check for matching dates
-  function lookForDates() {
-    document.body.appendChild(elLog);
+  function checkDates() {
+    const check = [];
+    wantDates = [];
+    DATES.forEach(d => {
+      const date = new Date(d);
+      if (isNaN(date)) {
+        check.push(d);
+      } else {
+        wantDates.push(dateFmt(date, dateFKey));
+      }
+      if (check.length > 0) {
+        log('<b>Invalid dates:<b> ' + check.join(', ') + '<br>');
+      }
+    });
+  }
 
-    // This element has an attribute which lists the current available dates to display in the calendar.
-    const calendar = el("accommodation-calendar");
-    if (!calendar) {
-      log("<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>");
-      return;
-    }
-
-    // Check the attribute for dates
-    const dates = calendar.getAttribute("data-arrival-dates");
-    if (dates === null) {
-      log("<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>");
-      return;
-    }
-
-    const cl = calendar.getAttribute("class");
-    const pref = cl.substring(0, cl.length - 6);
-    const nxMon = document.getElementsByClassName(pref + "-next-month")[0];
-    if (!nxMon) {
-      log("<b>WARNING:</b> Cannot autoselect month.<br>");
-    }
-
-    // Check the date data entry for valid dates (if used)
+  function handleDates() {
+    // Check dates (if used)
     if (!ANY_DATE) {
-      checkDateData();
+      checkDates();
     }
 
-    log("Checking dates: ");
-    if (dates) {
-      const dateArray = getAvailableDates(dates);
-      const match = ANY_DATE ? dateArray : DATES.filter(value => dateArray.includes(value));
+    outer[0].scrollIntoView();
+
+    // Any dates?
+    if (availDates.size > 0) {
+      const match = ANY_DATE ? [...availDates.keys()] : wantDates.filter(d => availDates.has(d));
       if (match && match.length > 0) {
-        if (nxMon) {
-          const thisMon = new Date().getMonth() + 1;
-          const avMon = parseInt(match[0].substr(5, 2));
-          var d = avMon - thisMon;
-          if (d < 0) d += 12;
-          const ev = new MouseEvent("mousedown", {bubbles: true, cancelable: true, which: 1});
-          for (var i = 0; i < d; i++) {
-            nxMon.dispatchEvent(ev);
-          }
-        }
-        log("DATES AVAILABLE!<br>" + match.join(", "));
-        calendar.scrollIntoView();
+        const sAvail = match.join(", ");
+        log("DATES AVAILABLE!<br>" + sAvail);
         beep();
         GM_notification({
           "title": "Dates available!",
-          "text": match.join(", "),
+          "text": sAvail,
           "highlight": true,
           "silent": false
         });
+
+        const firstDate = availDates.get(match[0]);
+        firstDate.dispatchEvent(ev);
         return;
       } else {
-        log("NO MATCHING DATES.<br>" + dateArray.join(", ") + "<br>");
+        log("NO MATCHING DATES.<br>" + availDates.join(", ") + "<br>");
         // Remove the slashes at the start of the next line to make the script STOP on any match
         // return;
       }
@@ -208,8 +206,37 @@
     reloadSoon(WAIT_MIN + Math.floor(Math.random() * (WAIT_MAX - WAIT_MIN + 1)));
   }
 
-  // Check to make sure we're on the right page
+  function getPref() {
+    const buttons = document.getElementsByTagName("button");
+    for (var i = 0; i < buttons.length; i++){
+      const cls = buttons[i].getAttribute("class");
+      const pos = cls.indexOf("__p");
+      if (pos > -1) {
+        return cls.substring(0, pos);
+      }
+    }
+    return false;
+  }
+
+  function main() {
+    // Find the prefix
+    pref = getPref();
+    // Outer div of calendar
+    outer = document.getElementsByClassName(pref);
+    if (!pref || outer.length === 0) {
+      log("<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>");
+      return;
+    }
+
+    // Get the dates and then handle them
+    getAvailDates();
+    console.log(availDates);
+
+    handleDates();
+  }
+
+  // If we're on the right page, and start our process
   if (window.location.hash === "#step-2") {
-    window.addEventListener("load", lookForDates, false);
+    window.addEventListener("load", main, false);
   }
 })();
