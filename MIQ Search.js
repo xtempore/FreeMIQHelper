@@ -66,7 +66,7 @@ unsafeWindow.quit = false;
   var pref, outer, elLog, elStop, wantDates;
   const ev = new MouseEvent("mousedown", {bubbles: true, cancelable: true, which: 1});
   const availDates = new Map();
-  const dateFKey = {day: "2-digit", month: "short"};
+  const dateFKey = {day: "2-digit", month: "short", year: "2-digit"};
   const minMonth = 7;
   const Y = 2021;
 
