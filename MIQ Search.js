@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      3.0
+// @version      3.0.1
 // @description  MIQ allocation helper
 // @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
@@ -16,7 +16,7 @@ unsafeWindow.quit = false;
 
   /*** USER EDITABLE SECTION ***/
 
-  // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
+      // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
   const ANY_DATE = true;
 
   // List your desired dates here in YYYY-MM-DD format. This is ONLY USED if ANY_DATE = false.
@@ -64,7 +64,7 @@ unsafeWindow.quit = false;
 
       // General variables
   var pref, outer, elLog, elStop, wantDates;
-  const ev = new MouseEvent("mousedown", {bubbles: true, cancelable: true, which: 1});
+  const ev = new MouseEvent("click", {bubbles: true, cancelable: true, which: 1});
   const availDates = new Map();
   const dateFKey = {day: "2-digit", month: "short", year: "2-digit"};
   const minMonth = 7;
@@ -140,7 +140,7 @@ unsafeWindow.quit = false;
       const day = days[i];
       const cls = day.getAttribute("class");
       const dateS = day.getAttribute("aria-label");
-      if (dateS && cls && cls.trim().toLowerCase() !== "no") {
+      if (dateS && (!cls || cls.trim().toLowerCase() !== "no")) {
         const dt = new Date(dateS + " " + Y);
         const month = dt.getMonth() + 1;
         if (month < minMonth) {
@@ -177,6 +177,10 @@ unsafeWindow.quit = false;
 
     // Any dates?
     if (availDates.size > 0) {
+      // Log these dates in local storage for debugging purposes
+      localStorage.setItem((new Date()).toLocaleString("en-NZ"), [...availDates.keys()].join(", "));
+
+      // Find matches (all if ANY_DATE is true)
       const match = ANY_DATE ? [...availDates.keys()] : wantDates.filter(d => availDates.has(d));
       if (match && match.length > 0) {
         const sAvail = match.join(", ");
@@ -230,7 +234,6 @@ unsafeWindow.quit = false;
 
     // Get the dates and then handle them
     getAvailDates();
-    console.log(availDates);
 
     handleDates();
   }
