@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      3.0.1
+// @version      3.0.2
 // @description  MIQ allocation helper
 // @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
@@ -177,11 +177,13 @@ unsafeWindow.quit = false;
 
     // Any dates?
     if (availDates.size > 0) {
+      const dateVals = [...availDates.keys()];
+
       // Log these dates in local storage for debugging purposes
-      localStorage.setItem((new Date()).toLocaleString("en-NZ"), [...availDates.keys()].join(", "));
+      localStorage.setItem((new Date()).toLocaleString("en-NZ"), dateVals.join(", "));
 
       // Find matches (all if ANY_DATE is true)
-      const match = ANY_DATE ? [...availDates.keys()] : wantDates.filter(d => availDates.has(d));
+      const match = ANY_DATE ? dateVals : wantDates.filter(d => availDates.has(d));
       if (match && match.length > 0) {
         const sAvail = match.join(", ");
         log("DATES AVAILABLE!<br>" + sAvail);
@@ -197,7 +199,7 @@ unsafeWindow.quit = false;
         firstDate.dispatchEvent(ev);
         return;
       } else {
-        log("NO MATCHING DATES.<br>" + availDates.join(", ") + "<br>");
+        log("NO MATCHING DATES.<br>Found: " + dateVals.join(", ") + "<br>");
         // Remove the slashes at the start of the next line to make the script STOP on any match
         // return;
       }
