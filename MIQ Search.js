@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      3.0.2
+// @version      3.1.0
 // @description  MIQ allocation helper
 // @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
@@ -14,70 +14,74 @@ unsafeWindow.quit = false;
 (function() {
   'use strict';
 
-  /*** USER EDITABLE SECTION ***/
+  //=== USER EDITABLE SECTION ===//
 
-      // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
+  // To alert on ANY date, set this to true; To look for specific dates, set this to false and set the DATES constant (below).
   const ANY_DATE = true;
 
   // List your desired dates here in YYYY-MM-DD format. This is ONLY USED if ANY_DATE = false.
   // The sample script includes every day in October 2021.
   const DATES = [
-    "2021-10-01",
-    "2021-10-02",
-    "2021-10-03",
-    "2021-10-04",
-    "2021-10-05",
-    "2021-10-06",
-    "2021-10-07",
-    "2021-10-08",
-    "2021-10-09",
-    "2021-10-10",
-    "2021-10-11",
-    "2021-10-12",
-    "2021-10-13",
-    "2021-10-14",
-    "2021-10-15",
-    "2021-10-16",
-    "2021-10-17",
-    "2021-10-18",
-    "2021-10-19",
-    "2021-10-20",
-    "2021-10-21",
-    "2021-10-22",
-    "2021-10-23",
-    "2021-10-24",
-    "2021-10-25",
-    "2021-10-26",
-    "2021-10-27",
-    "2021-10-28",
-    "2021-10-29",
-    "2021-10-30",
-    "2021-10-31"
+    '2021-10-01',
+    '2021-10-02',
+    '2021-10-03',
+    '2021-10-04',
+    '2021-10-05',
+    '2021-10-06',
+    '2021-10-07',
+    '2021-10-08',
+    '2021-10-09',
+    '2021-10-10',
+    '2021-10-11',
+    '2021-10-12',
+    '2021-10-13',
+    '2021-10-14',
+    '2021-10-15',
+    '2021-10-16',
+    '2021-10-17',
+    '2021-10-18',
+    '2021-10-19',
+    '2021-10-20',
+    '2021-10-21',
+    '2021-10-22',
+    '2021-10-23',
+    '2021-10-24',
+    '2021-10-25',
+    '2021-10-26',
+    '2021-10-27',
+    '2021-10-28',
+    '2021-10-29',
+    '2021-10-30',
+    '2021-10-31'
   ];
+
+  // Use for testing (fakes date availability)
+  const TEST_DATE = '';
 
   // These values control how often the script refreshes. Having a range helps the script look more "human". A low value will result in a 403 error happening more often.
   // A higher value will mean less chance of getting a date quickly. The defaults 7 and 12 strike a good balance.
   const WAIT_MIN = 7;
   const WAIT_MAX = 12;
 
-  /*** END of USER EDITABLE SECTION ***/
+  //=== END of USER EDITABLE SECTION ===//
 
-      // General variables
-  var pref, outer, elLog, elStop, wantDates;
-  const ev = new MouseEvent("click", {bubbles: true, cancelable: true, which: 1});
+  // General variables
+  let outer, elLog, elStop, wantDates;
+  const ev = new MouseEvent('click',
+      {bubbles: true, cancelable: true, which: 1});
   const availDates = new Map();
-  const dateFKey = {day: "2-digit", month: "short", year: "2-digit"};
-  const minMonth = 7;
+  const dateFKey = {day: '2-digit', month: 'short', year: '2-digit'};
+  const minMonth = 8;
   const Y = 2021;
 
   // Logging
   function createLog() {
-    elLog = document.createElement("div");
+    elLog = document.createElement('div');
     elLog.style.cssText = 'position: fixed; top: 4px; right: 4px; width: 480px; height: 80px; background: rgba(255, 255, 240, 0.9); border: 1px solid gray; overflow-y: auto; font-size: 10pt; box-shadow: 0 0 8px 0 lime';
-    elStop = document.createElement("span");
-    elStop.setAttribute("onclick", "window.quit = true;");
+    elStop = document.createElement('span');
+    elStop.setAttribute('onclick', 'window.quit = true;');
     elStop.style.cssText = 'position: absolute; display: block; top: 2px; right: 2px; font-size: 12pt; cursor: pointer; z-index: 999;';
-    elStop.innerHTML = "&#x23F9;";
+    elStop.innerHTML = '&#x23F9;';
     elLog.appendChild(elStop);
     document.body.appendChild(elLog);
   }
@@ -90,7 +94,7 @@ unsafeWindow.quit = false;
   // Reload timer uses a worker so continues in background
   function reloadSoon(n) {
     const script = `function(e) {
-    var reload = e.data;
+    let reload = e.data;
     const relMsg = () => {
         self.postMessage(reload);
         reload--;
@@ -101,17 +105,18 @@ unsafeWindow.quit = false;
     relMsg();
 }
 `;
-    const worker = new Worker(window.URL.createObjectURL(new Blob(["onmessage = " + script])));
+    const worker = new Worker(
+        window.URL.createObjectURL(new Blob(['onmessage = ' + script])));
     worker.onmessage = function(e) {
       if (unsafeWindow.quit) {
         worker.terminate();
-        log("stopped! Refresh to continue.");
+        log('stopped! Refresh to continue.');
       } else {
         const reload = e.data;
         if (reload <= 0) {
           location.reload();
         } else {
-          log(reload + "... ");
+          log(reload + '... ');
         }
       }
     };
@@ -128,27 +133,44 @@ unsafeWindow.quit = false;
     const audio_ctx = new AudioContext();
     const oscillator = audio_ctx.createOscillator();
     oscillator.frequency.value = 660;
-    oscillator.type = "sine";
+    oscillator.type = 'sine';
     oscillator.connect(audio_ctx.destination);
     oscillator.start(audio_ctx.currentTime);
     oscillator.stop(audio_ctx.currentTime + 0.8);
   }
 
   function getAvailDates() {
-    const days = document.querySelectorAll("." + pref + "__d__item div");
-    for (let i = 0;i < days.length; i++) {
-      const day = days[i];
-      const cls = day.getAttribute("class");
-      const dateS = day.getAttribute("aria-label");
-      if (dateS && (!cls || cls.trim().toLowerCase() !== "no")) {
-        const dt = new Date(dateS + " " + Y);
-        const month = dt.getMonth() + 1;
-        if (month < minMonth) {
-          dt.setFullYear(dt.getFullYear() + 1)
+    const labels = document.querySelectorAll('div[aria-label]');
+    const rxNum = /^\d+$/;
+    let found = false;
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i];
+      const labelS = label.getAttribute('aria-label');
+      const text = label.textContent;
+      const val = rxNum.test(text) ? parseInt(text) : 0;
+      if (val >= 1 && val <= 31) {
+        found = true;
+
+        const dt = new Date(labelS + ' ' + Y);
+
+        // Fake it for our test date
+        if (TEST_DATE && (new Date(TEST_DATE)).toDateString() ===
+            dt.toDateString()) {
+          label.removeAttribute('class');
         }
-        availDates.set(dateFmt(dt, dateFKey), day);
+
+        const cls = label.getAttribute('class');
+        if (!cls) {
+          const month = dt.getMonth() + 1;
+          if (month < minMonth) {
+            dt.setFullYear(dt.getFullYear() + 1);
+          }
+          availDates.set(dateFmt(dt, dateFKey), label);
+        }
       }
     }
+
+    return found;
   }
 
   function checkDates() {
@@ -168,11 +190,7 @@ unsafeWindow.quit = false;
   }
 
   function handleDates() {
-    // Check dates (if used)
-    if (!ANY_DATE) {
-      checkDates();
-    }
-
+    // Bring the calendar into view
     outer[0].scrollIntoView();
 
     // Any dates?
@@ -180,68 +198,62 @@ unsafeWindow.quit = false;
       const dateVals = [...availDates.keys()];
 
       // Log these dates in local storage for debugging purposes
-      localStorage.setItem((new Date()).toLocaleString("en-NZ"), dateVals.join(", "));
+      localStorage.setItem((new Date()).toLocaleString('en-NZ'),
+          dateVals.join(', '));
 
       // Find matches (all if ANY_DATE is true)
-      const match = ANY_DATE ? dateVals : wantDates.filter(d => availDates.has(d));
+      const match = ANY_DATE ? dateVals : wantDates.filter(
+          d => availDates.has(d));
       if (match && match.length > 0) {
-        const sAvail = match.join(", ");
-        log("DATES AVAILABLE!<br>" + sAvail);
+        const sAvail = match.join(', ');
+        log('DATES AVAILABLE!<br>' + sAvail);
         beep();
         GM_notification({
-          "title": "Dates available!",
-          "text": sAvail,
-          "highlight": true,
-          "silent": false
+          'title': 'Dates available!',
+          'text': sAvail,
+          'highlight': true,
+          'silent': false
         });
 
         const firstDate = availDates.get(match[0]);
         firstDate.dispatchEvent(ev);
         return;
       } else {
-        log("NO MATCHING DATES.<br>Found: " + dateVals.join(", ") + "<br>");
+        log('NO MATCHING DATES.<br>Found: ' + dateVals.join(', ') + '<br>');
         // Remove the slashes at the start of the next line to make the script STOP on any match
         // return;
       }
     } else {
-      log("NO DATES AVAILABLE<br>");
+      log('NO DATES AVAILABLE<br>');
     }
 
     // If not found reload in random seconds
-    log("reloading in: ");
-    reloadSoon(WAIT_MIN + Math.floor(Math.random() * (WAIT_MAX - WAIT_MIN + 1)));
-  }
-
-  function getPref() {
-    const buttons = document.getElementsByTagName("button");
-    for (var i = 0; i < buttons.length; i++){
-      const cls = buttons[i].getAttribute("class");
-      const pos = cls.indexOf("__p");
-      if (pos > -1) {
-        return cls.substring(0, pos);
-      }
-    }
-    return false;
+    log('reloading in: ');
+    reloadSoon(
+        WAIT_MIN + Math.floor(Math.random() * (WAIT_MAX - WAIT_MIN + 1)));
   }
 
   function main() {
-    // Find the prefix
-    pref = getPref();
     // Outer div of calendar
-    outer = document.getElementsByClassName(pref);
-    if (!pref || outer.length === 0) {
-      log("<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>");
-      return;
+    outer = document.getElementsByClassName('col-12 p-1');
+
+    // Check entered dates (if used)
+    if (!ANY_DATE) {
+      checkDates();
     }
 
-    // Get the dates and then handle them
-    getAvailDates();
-
-    handleDates();
+    // Get the available dates
+    if (getAvailDates()) {
+      // Handle dates
+      handleDates();
+    } else {
+      log('<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>');
+    }
   }
 
   // If we're on the right page, and start our process
-  if (window.location.hash === "#step-2") {
-    window.addEventListener("load", main, false);
+  if (window.location.hash === '#step-2') {
+    //window.addEventListener('load', main, false);
+    main();
   }
 })();
