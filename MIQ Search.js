@@ -166,6 +166,7 @@ unsafeWindow.quit = false;
             dt.setFullYear(dt.getFullYear() + 1);
           }
           availDates.set(dateFmt(dt, dateFKey), label);
+          label.style.background = "yellow";
         }
       }
     }
