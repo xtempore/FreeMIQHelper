@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      3.1.0
+// @version      3.1.1
 // @description  MIQ allocation helper
 // @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
@@ -66,7 +66,7 @@ unsafeWindow.quit = false;
   //=== END of USER EDITABLE SECTION ===//
 
   // General variables
-  let outer, elLog, elStop, wantDates;
+  let outer, elLog, elStop, wantDates, clDay, clLabel;
   const ev = new MouseEvent('click',
       {bubbles: true, cancelable: true, which: 1});
   const availDates = new Map();
@@ -139,6 +139,15 @@ unsafeWindow.quit = false;
     oscillator.stop(audio_ctx.currentTime + 0.8);
   }
 
+  // Adjust style
+  function tweakStyle() {
+    const style = document.createElement('style');
+    style.innerHTML = '.' + clDay + ' :not(.' + clLabel +
+        ')[tabIndex]{background:yellow}';
+    document.head.prepend(style);
+  }
+
+  // Look at calendar to find available dates
   function getAvailDates() {
     const labels = document.querySelectorAll('div[aria-label]');
     const rxNum = /^\d+$/;
@@ -166,6 +175,10 @@ unsafeWindow.quit = false;
             dt.setFullYear(dt.getFullYear() + 1);
           }
           availDates.set(dateFmt(dt, dateFKey), label);
+        } else if (!clLabel) {
+          clLabel = cls;
+          clDay = label.parentElement.getAttribute('class');
+          tweakStyle();
         }
       }
     }
@@ -216,7 +229,7 @@ unsafeWindow.quit = false;
         });
 
         const firstDate = availDates.get(match[0]);
-        firstDate.dispatchEvent(ev);
+        setTimeout(() => firstDate.dispatchEvent(ev), 100);
         return;
       } else {
         log('NO MATCHING DATES.<br>Found: ' + dateVals.join(', ') + '<br>');
