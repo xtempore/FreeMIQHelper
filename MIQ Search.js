@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MIQ Search
 // @namespace    http://tampermonkey.net/
-// @version      3.1.1
+// @version      3.2.0
 // @description  MIQ allocation helper
 // @author       Jonathan Briden
 // @match        https://allocation.miq.govt.nz/portal/organisation/*/event/MIQ-DEFAULT-EVENT/accommodation/arrival-date
@@ -63,6 +63,10 @@ unsafeWindow.quit = false;
   const WAIT_MIN = 7;
   const WAIT_MAX = 12;
 
+  // Automatically pause the script to help avoid detection (times in minutes).
+  const EXPIRE_MIN = 60;
+  const EXPIRE_MAX = 120;
+
   //=== END of USER EDITABLE SECTION ===//
 
   // General variables
@@ -73,6 +77,7 @@ unsafeWindow.quit = false;
   const dateFKey = {day: '2-digit', month: 'short', year: '2-digit'};
   const minMonth = 8;
   const Y = 2021;
+  const oneMinute = 1000 * 60;
 
   // Logging
   function createLog() {
@@ -129,14 +134,14 @@ unsafeWindow.quit = false;
   }
 
   // Beeper
-  function beep() {
+  function beep(freq, secs) {
     const audio_ctx = new AudioContext();
     const oscillator = audio_ctx.createOscillator();
-    oscillator.frequency.value = 660;
+    oscillator.frequency.value = freq;
     oscillator.type = 'sine';
     oscillator.connect(audio_ctx.destination);
     oscillator.start(audio_ctx.currentTime);
-    oscillator.stop(audio_ctx.currentTime + 0.8);
+    oscillator.stop(audio_ctx.currentTime + secs);
   }
 
   // Adjust style
@@ -145,6 +150,23 @@ unsafeWindow.quit = false;
     style.innerHTML = '.' + clDay + ' :not(.' + clLabel +
         ')[tabIndex]{background:yellow}';
     document.head.prepend(style);
+  }
+
+  // Automatically pause sometimes (helps avoid detection)
+  function checkPause() {
+    const now = new Date().getTime();
+    const pauseAt = localStorage.getItem('pause');
+    if (!pauseAt) {
+      const exp = (Math.floor(Math.random() * (EXPIRE_MAX - EXPIRE_MIN)) +
+          EXPIRE_MIN) * oneMinute;
+      localStorage.setItem('pause', now + exp);
+    } else if (now >= pauseAt) {
+      localStorage.removeItem('pause');
+      beep(990, 0.8);
+      log('TAKING A BREAK! Refresh the page to restart.');
+      return true;
+    }
+    return false;
   }
 
   // Look at calendar to find available dates
@@ -186,6 +208,7 @@ unsafeWindow.quit = false;
     return found;
   }
 
+  // Check entered dates
   function checkDates() {
     const check = [];
     wantDates = [];
@@ -202,6 +225,7 @@ unsafeWindow.quit = false;
     });
   }
 
+  // Handle the list of dates found (if any)
   function handleDates() {
     // Bring the calendar into view
     outer[0].scrollIntoView();
@@ -220,7 +244,7 @@ unsafeWindow.quit = false;
       if (match && match.length > 0) {
         const sAvail = match.join(', ');
         log('DATES AVAILABLE!<br>' + sAvail);
-        beep();
+        beep(660, 0.8);
         GM_notification({
           'title': 'Dates available!',
           'text': sAvail,
@@ -257,16 +281,18 @@ unsafeWindow.quit = false;
 
     // Get the available dates
     if (getAvailDates()) {
-      // Handle dates
-      handleDates();
+      // Check for auto-pause, if enabled
+      if (!checkPause()) {
+        // Handle dates
+        handleDates();
+      }
     } else {
       log('<b>MIQ SYSTEM HAS BEEN UPDATED: Check for new version of script</b>');
     }
   }
 
-  // If we're on the right page, and start our process
+  // If we're on the right page, start our process
   if (window.location.hash === '#step-2') {
-    //window.addEventListener('load', main, false);
     main();
   }
 })();
